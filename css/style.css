@@ -422,7 +422,7 @@ p {
   overflow: hidden;
 }
 
-.media-contain img,
+.media-contain img:not(.logo-braver),
 .media-contain video,
 .media-contain iframe {
   position: absolute;
@@ -4261,7 +4261,7 @@ p {
 .item-head .media-contain {
   padding-top: 53.51%;
   border-radius: 8px;
-  background: #f4f4f4;
+  background: #F4F4F4;
   margin-bottom: 20px;
 }
 
@@ -7289,6 +7289,23 @@ p {
   .intro .container {
     min-height: 1500px;
   }
+}
+
+
+/* Технический директор фото */
+
+
+.media-contain {
+    position: relative; 
+}
+
+.logo-braver {
+    position: absolute;
+    top: 10px;  
+    right: 10px; 
+    z-index: 9999;
+    width: 40px;
+    height: 40px; 
 }
 
 
