@@ -1272,6 +1272,19 @@
                 })
             })
             
+        // function updateBalloonPanelMode() {
+            //   if (!contactsMap) return;
+                        
+            //   if (window.innerWidth <= 600) {
+            //     contactsMap.options.set('balloonPanelMaxMapArea', Infinity);
+            //   } else {
+            //     contactsMap.options.set('balloonPanelMaxMapArea', 0);
+            //   }
+        // }
+
+        // updateBalloonPanelMode();
+        // window.addEventListener('resize', updateBalloonPanelMode);
+            
         clusterer.add(geoObjects);
         contactsMap.geoObjects.add(clusterer);
 
@@ -1285,38 +1298,17 @@
             const cardsContainer = document.querySelector(".map-coordinates-cards");
             if (!cardsContainer) return;
 
-            window.openBalloonWhenVisible = function(placemark, checkInterval = 400, maxAttempts = 12) {
-                let attempts = 0;
+            function isElementMostlyVisible(el, visibleRatio = 0.35) {
+                const rect = el.getBoundingClientRect();
+                const vh = window.innerHeight || document.documentElement.clientHeight;
+                const visibleHeight = Math.max(0, Math.min(rect.bottom, vh) - Math.max(rect.top, 0));
+                return (visibleHeight / Math.max(rect.height, 1)) >= visibleRatio;
+            }
 
-                const checker = setInterval(() => {
-                attempts++;
-
-                const state = clusterer.getObjectState(placemark);
-                const inCluster = !!(state && state.cluster);
-
-                if (!inCluster) {
-                    clearInterval(checker);
-                    try {
-                    placemark.balloon.open();
-                    } catch (e) {
-                        console.warn('Не удалось открыть балун метки:', e);
-                    }
-                    return;
-                }
-
-                if (attempts >= maxAttempts) {
-                    clearInterval(checker);
-                    try {
-                    const moreZoom = Math.min(contactsMap.getZoom() + 1, 18);
-                    contactsMap.setCenter(placemark.geometry.getCoordinates(), moreZoom, { duration: 300 });
-                    setTimeout(() => {
-                        try { placemark.balloon.open(); } catch (e) {}
-                    }, 350);
-                    } catch (e) {
-                    try { placemark.balloon.open(); } catch (err) {}
-                    }
-                }
-                }, checkInterval);
+            function scrollToMap(mapEl, offset = 12) {
+                const rect = mapEl.getBoundingClientRect();
+                const top = window.pageYOffset + rect.top - offset;
+                window.scrollTo({ top, behavior: 'smooth' });
             }
 
             cardsContainer.addEventListener("click", (e) => {
@@ -1330,28 +1322,75 @@
                 const placemark = geoObjects[idx];
                 if (!placemark || !contactsMap) return;
 
-                contactsMap.balloon.close();
-                closeAllMarks();
+                function performMapAction() {
+                    try {
+                        contactsMap.balloon.close();
+                    } catch (err) {}
+                    closeAllMarks();
 
-                const coords = placemark.geometry.getCoordinates();
+                    const coords = placemark.geometry.getCoordinates();
 
-                const objState = clusterer.getObjectState(placemark);
-                const isInCluster = !!(objState && objState.cluster);
+                    const objState = clusterer.getObjectState(placemark);
+                    const isInCluster = !!(objState && objState.cluster);
 
-                let targetZoom;
-                if (isInCluster) {
-                    const currentZoom = contactsMap.getZoom();
-                    targetZoom = Math.min(currentZoom + 4, 18);
-                } else {
-                    targetZoom = 16;
+                    let targetZoom;
+                    if (isInCluster) {
+                        const currentZoom = contactsMap.getZoom();
+                        targetZoom = Math.min(currentZoom + 4, 18);
+                    } else {
+                        targetZoom = 16;
+                    }
+
+                    const animDuration = 500;
+                    contactsMap.setCenter(coords, targetZoom, { duration: animDuration });
+
+                    setTimeout(() => {
+                        if (typeof window.openBalloonWhenVisible === 'function') {
+                            window.openBalloonWhenVisible(placemark, 400, 12);
+                        } else {
+                            try { placemark.balloon.open(); } catch (e) { console.warn(e); }
+                        }
+                    }, animDuration + 80);
                 }
 
-                const animDuration = 500;
-                contactsMap.setCenter(coords, targetZoom, { duration: animDuration });
+                if (window.innerWidth <= 992) {
+                    const mapEl = document.getElementById('contactsMap');
+                    if (!mapEl) {
+                        performMapAction();
+                        return;
+                    }
 
-                setTimeout(() => {
-                    openBalloonWhenVisible(placemark, 400, 12);
-                }, animDuration + 80); 
+                    if (isElementMostlyVisible(mapEl, 0.35)) {
+                        performMapAction();
+                        return;
+                    }
+
+                    scrollToMap(mapEl, 12);
+
+                    let done = false;
+                    const observer = new IntersectionObserver((entries) => {
+                        entries.forEach(entry => {
+                            if (entry.isIntersecting && !done) {
+                                done = true;
+                                observer.disconnect();
+
+                                setTimeout(performMapAction, 80);
+                            }
+                        });
+                    }, { threshold: [0.25, 0.5, 0.75] });
+
+                    observer.observe(mapEl);
+
+                    setTimeout(() => {
+                        if (!done) {
+                            try { observer.disconnect(); } catch (e) {}
+                            done = true;
+                            performMapAction();
+                        }
+                    }, 1300);
+                } else {
+                    performMapAction();
+                }
             });
         })();
 
@@ -1485,8 +1524,6 @@
     input.addEventListener('input', handler);
     })();
 </script>
-
-
 
 <script>
     const switchMapNavBtn = document.querySelector(".main-map__nav-map")
