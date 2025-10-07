@@ -7301,18 +7301,20 @@ p {
   padding: 0px 20px;
 }
 
+.map-container > * {
+  min-width: 0;
+}
+
 .map-coordinates-cards {
   display: flex;
   flex-direction: column;
   gap: 0;
   
-  max-height: 740px;  
+  max-height: 720px;  
   overflow-y: auto;   
   padding-right: 8px;  
   scroll-behavior: smooth;
 }
-
-
 
 .map-coordinates-cards::-webkit-scrollbar {
   width: 6px;
@@ -7335,6 +7337,10 @@ p {
 }
 
 .map-coordinates-card:first-child {
+  padding-top: 0px;
+}
+
+.map-coordinates-card:first-child {
   border-top: none;
 }
 
@@ -7343,9 +7349,10 @@ p {
 }
 
 .map-coordinates-card-title {
-  font-family: 500;
+  font-weight: 500;
   font-size: 20px;
   color: #202020;
+  line-height: 1;
 }
 
 .map-coordinates-card-info {
@@ -7358,6 +7365,7 @@ p {
 .map-coordinates-card-info p {
   font-weight: 400;
   font-size: 18px;
+  line-height: 1;
   color: #7B7B7B;
   border-bottom: 1px solid #2020201A;
   padding: 10px 0px;
@@ -7402,4 +7410,66 @@ p {
 .search-box:focus-within {
   border-color: #202020; 
 }
+
+/* Адаптив */
+
+@media (max-width: 1579px) {
+  .map-coordinates-cards {
+     max-height: 555px;
+  }
+
+  .map-container {
+    gap: 20px;
+  }
+}
+
+@media (max-width: 992px) {
+  .map-container {
+    grid-template-columns: 1fr;
+  }
+
+ .map-coordinates-card-title {
+  font-size: 16px;
+ }
+
+ .map-coordinates-card-info p {
+  font-size: 14px;
+ }
+
+ .search-box input {
+  font-size: 16px;
+ }
+
+ .search-box {
+  padding: 15px 12px;
+  margin-bottom: 10px;
+ }
+
+  /* #contactsMap [class*=-balloon_layout] {
+    overflow: visible !important;
+  }
+
+  #contactsMap [class*=-balloon__tail]{
+    position: absolute !important;
+    width: 36px !important;
+    height: 20px !important;
+
+    top: 1px !important;                   
+    left: 30% !important;                
+    transform: translate(-50%, -100%) !important; 
+    transform-origin: 50% 100% !important; 
+
+    background: url(../img/icons/balloon-tail.svg) center/contain no-repeat !important;
+    -webkit-box-shadow: none !important;
+    box-shadow: none !important;
+    z-index: 9999 !important;
+  }
+
+  #contactsMap [class*=-balloon__tail]::after { 
+    content: none !important; 
+  } */
+}
+
+
+
 

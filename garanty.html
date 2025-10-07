@@ -1192,18 +1192,15 @@
             zoomControlSize: "large",
         });
         setmapDefaults(contactsMap)
-        // Создаём макет содержимого.
         var animatedLayout = ymaps.templateLayoutFactory.createClass(
         '<div class="placemark"></div>',
             {
                 build: function () {
                     animatedLayout.superclass.build.call(this);
                     var element = this.getParentElement().getElementsByClassName('placemark')[0];
-                    // Создадим фигуру активной области
                     var smallShape = {type: 'Circle', coordinates: [0, 0], radius: 11.5};
                     var bigShape = {type: 'Rectangle', coordinates: [[-35, -35],[25, 25]]};
                     this.getData().options.set('shape', this.isActive ? smallShape : bigShape);
-                    // Если метка выбрана, то зададим класс и запустим анимацию.
                     if (this.isActive) {
                         element.classList.add("active");
                     } else if (this.inited) {
@@ -1212,7 +1209,6 @@
                     if (!this.inited) {
                         this.inited = true;
                         this.isActive = false;
-                        // При клике по метке будем перестраивать макет.
                         this.getData().geoObject.events.add('click', function (e) {
                             if(!this.isActive && activePlacemark) {
                                 activePlacemark.isActive = false;
@@ -1249,7 +1245,6 @@
             ],
             clusterIconContentLayout: MyIconContentLayout,
 
-            // ВАЖНОЕ:
             gridSize: 200,             // радиус "сборки" точек 
             minClusterSize: 2,         // минимальное число объектов для кластера
             groupByCoordinates: false, 
@@ -1276,24 +1271,223 @@
                     balloonOffset: [90, 70]
                 })
             })
+            
         clusterer.add(geoObjects);
         contactsMap.geoObjects.add(clusterer);
 
         function normalizeAddr(s) {
-  if (!s) return '';
-  return s.replace(/\s+/g, ' ').trim().toLowerCase();
-}
+            if (!s) return '';
+            return s.replace(/\s+/g, ' ').trim().toLowerCase();
+        }
 
+        // При нажатии на карточку телепорт к метке на карте и открытие балуна
+        (function() {
+            const cardsContainer = document.querySelector(".map-coordinates-cards");
+            if (!cardsContainer) return;
+
+            window.openBalloonWhenVisible = function(placemark, checkInterval = 400, maxAttempts = 12) {
+                let attempts = 0;
+
+                const checker = setInterval(() => {
+                attempts++;
+
+                const state = clusterer.getObjectState(placemark);
+                const inCluster = !!(state && state.cluster);
+
+                if (!inCluster) {
+                    clearInterval(checker);
+                    try {
+                    placemark.balloon.open();
+                    } catch (e) {
+                        console.warn('Не удалось открыть балун метки:', e);
+                    }
+                    return;
+                }
+
+                if (attempts >= maxAttempts) {
+                    clearInterval(checker);
+                    try {
+                    const moreZoom = Math.min(contactsMap.getZoom() + 1, 18);
+                    contactsMap.setCenter(placemark.geometry.getCoordinates(), moreZoom, { duration: 300 });
+                    setTimeout(() => {
+                        try { placemark.balloon.open(); } catch (e) {}
+                    }, 350);
+                    } catch (e) {
+                    try { placemark.balloon.open(); } catch (err) {}
+                    }
+                }
+                }, checkInterval);
+            }
+
+            cardsContainer.addEventListener("click", (e) => {
+                const card = e.target.closest(".map-coordinates-card");
+                if (!card) return;
+
+                const id = Number(card.getAttribute("data-map-id"));
+                if (!id) return;
+
+                const idx = id - 1;
+                const placemark = geoObjects[idx];
+                if (!placemark || !contactsMap) return;
+
+                contactsMap.balloon.close();
+                closeAllMarks();
+
+                const coords = placemark.geometry.getCoordinates();
+
+                const objState = clusterer.getObjectState(placemark);
+                const isInCluster = !!(objState && objState.cluster);
+
+                let targetZoom;
+                if (isInCluster) {
+                    const currentZoom = contactsMap.getZoom();
+                    targetZoom = Math.min(currentZoom + 4, 18);
+                } else {
+                    targetZoom = 16;
+                }
+
+                const animDuration = 500;
+                contactsMap.setCenter(coords, targetZoom, { duration: animDuration });
+
+                setTimeout(() => {
+                    openBalloonWhenVisible(placemark, 400, 12);
+                }, animDuration + 80); 
+            });
+        })();
+
+        
 
         contactsMap.setBounds(contactsMap.geoObjects.getBounds(), {checkZoomRange: true, zoomMargin: 100}); 
-
-        
-        
     }
     if (document.querySelector("#contactsMap")) {
         ymaps.ready(init);
     }
 </script>
+
+<!-- Филтрация поиска -->
+
+<script>
+    function debounce(fn, wait) {
+    let t;
+    return function(...args) {
+        clearTimeout(t);
+        t = setTimeout(() => fn.apply(this, args), wait);
+    };
+    }
+    function normText(s) { if (!s) return ''; return s.toString().replace(/\s+/g, ' ').trim().toLowerCase(); }
+    function digitsOnly(s) { if (!s) return ''; return s.toString().replace(/\D/g, ''); }
+
+    (function initContactsSearch() {
+    const input = document.querySelector('.search-box input[type="text"]');
+    const cardsContainer = document.querySelector('.map-coordinates-cards');
+    if (!input || !cardsContainer) return;
+
+    let searchIndex = [];
+    function buildSearchIndex() {
+        searchIndex = (contactsList || []).map(item => {
+        const combined = [
+            item.title || '',
+            item.address || '',
+            (item.contacts || []).join(' ')
+        ].join(' | ');
+        return {
+            id: item.id,
+            text: normText(combined),
+            digits: digitsOnly(combined)
+        };
+        });
+    }
+    buildSearchIndex();
+
+    const ANIM_DURATION = 500;
+
+    function doFilter(query) {
+        if (!searchIndex.length) buildSearchIndex();
+        const q = normText(query);
+        const qDigits = digitsOnly(query);
+
+        const cards = Array.from(cardsContainer.querySelectorAll('.map-coordinates-card'));
+        const results = [];
+
+        searchIndex.forEach(item => {
+        let matched = false;
+        if (q && item.text.indexOf(q) !== -1) matched = true;
+        if (!matched && qDigits && item.digits.indexOf(qDigits) !== -1) matched = true;
+        if (matched) results.push(item.id);
+        });
+
+        // Показываем/скрываем карточки
+        cards.forEach(card => {
+        const id = Number(card.getAttribute('data-map-id'));
+        if (results.indexOf(id) !== -1 || q === '') {
+            card.style.display = '';
+        } else {
+            card.style.display = 'none';
+        }
+        });
+
+        try {
+        if (!contactsMap || !geoObjects) return;
+
+        if (q === '') {
+            const allBounds = contactsMap.geoObjects.getBounds && contactsMap.geoObjects.getBounds();
+            if (allBounds) contactsMap.setBounds(allBounds, { checkZoomRange: true, zoomMargin: 100 });
+            return;
+        }
+
+        const matchedCoords = [];
+        results.forEach(id => {
+            const idx = id - 1;
+            const pm = geoObjects[idx];
+            if (pm && pm.geometry && pm.geometry.getCoordinates) matchedCoords.push({id, coords: pm.geometry.getCoordinates()});
+        });
+
+        if (matchedCoords.length === 0) {
+            return;
+        } else if (matchedCoords.length === 1) {
+            const { id, coords } = matchedCoords[0];
+            const targetZoom = 14; 
+            contactsMap.setCenter(coords, targetZoom, { duration: ANIM_DURATION });
+
+            setTimeout(() => {
+            const placemark = geoObjects[id - 1];
+            if (!placemark) return;
+            if (typeof window.openBalloonWhenVisible === 'function') {
+                window.openBalloonWhenVisible(placemark, 400, 12);
+            } else {
+                try { placemark.balloon.open(); } catch (e) { console.warn(e); }
+            }
+            }, ANIM_DURATION + 120);
+        } else {
+            let minLat = Infinity, minLon = Infinity, maxLat = -Infinity, maxLon = -Infinity;
+            matchedCoords.forEach(({coords}) => {
+            const [lat, lon] = coords;
+            if (lat < minLat) minLat = lat;
+            if (lat > maxLat) maxLat = lat;
+            if (lon < minLon) minLon = lon;
+            if (lon > maxLon) maxLon = lon;
+            });
+            const padLat = (maxLat - minLat) * 0.08 || 0.02;
+            const padLon = (maxLon - minLon) * 0.08 || 0.02;
+            const southWest = [minLat - padLat, minLon - padLon];
+            const northEast = [maxLat + padLat, maxLon + padLon];
+            contactsMap.setBounds([southWest, northEast], { checkZoomRange: true, zoomMargin: 100 });
+        }
+        } catch (err) {
+        console.warn('Ошибка фильтра/карты:', err);
+        }
+    }
+
+    const handler = debounce(() => {
+        doFilter(input.value || '');
+    }, 250);
+
+    input.addEventListener('input', handler);
+    })();
+</script>
+
+
+
 <script>
     const switchMapNavBtn = document.querySelector(".main-map__nav-map")
     const switchMapListBtn = document.querySelector(".main-map__nav-list")
