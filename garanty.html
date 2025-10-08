@@ -1251,19 +1251,56 @@
             clusterDisableClickZoom: false
         });
 
+        // Фомирование ссылки в балуне
+        function escapeHtml(str) {
+            return String(str).replace(/[&<>"']/g, function (s) {
+                return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]);
+            });
+        }
+
+        function formatContact(contact) {
+            if (!contact) return '';
+            const raw = String(contact).trim();
+            const safeDisplay = escapeHtml(raw);
+
+            const emailRe = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
+            const emailMatch = raw.match(emailRe);
+            if (emailMatch) {
+                const addr = escapeHtml(emailMatch[0]);
+                return `<p><a href="mailto:${addr}">${addr}</a></p>`;
+            }
+
+            const phoneDigits = raw.replace(/[^+\d]/g, '');
+            const digitsOnly = phoneDigits.replace(/\D/g,'');
+
+            if (digitsOnly.length >= 5) {
+                const telHref = 'tel:' + phoneDigits;
+                return `<p><a href="${telHref}">${safeDisplay}</a></p>`;
+            }
+
+            if (/\./.test(raw) && !/\s/.test(raw)) {
+                let url = raw;
+                if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+                const safeUrl = escapeHtml(url);
+                return `<p><a href="${safeUrl}" target="_blank" rel="noopener">${safeDisplay}</a></p>`;
+            }
+
+            return `<p>${safeDisplay}</p>`;
+        }
+
         contactsList.forEach((item,i) => {
             geoObjects[i] = new ymaps.Placemark(item.coords, 
                 {
                     balloonContent: `
-                    <div class="balloon">
-                        <div class="balloon__header">
+                        <div class="balloon">
+                            <div class="balloon__header">
                             <h4 class="balloon__name">${item.title}</h4>
-                        </div>
-                        <p class="balloon__address">${item.address}</p>
-                        <div class="balloon__contacts">
-                            ${item.contacts.length > 0 && item.contacts.map(contact => `<p>${contact}</p>`).join('')}
-                        </div>
-                    </div>`,
+                            </div>
+                            <p class="balloon__address">${item.address}</p>
+                            <div class="balloon__contacts">
+                            ${item.contacts && item.contacts.length > 0 ? item.contacts.map(formatContact).join('') : ''}
+                            </div>
+                        </div>`,
                 }, 
                 {
                     iconLayout: animatedLayout,
@@ -1394,7 +1431,70 @@
             });
         })();
 
-        
+        function setYmapsOverflowVisible() {
+            const container = document.getElementById('contactsMap');
+            if (!container) return;
+
+            const y = container.querySelector('ymaps[id^="id_"]') || container.querySelector('ymaps') || container.firstElementChild;
+            if (y && y.style && y.style.overflow !== 'visible') {
+                y.style.overflow = 'visible';
+            }
+            }
+            setYmapsOverflowVisible();
+
+            const mo = new MutationObserver(() => setYmapsOverflowVisible());
+            mo.observe(document.getElementById('contactsMap'), { childList: true, subtree: true });
+
+            (function injectBalloonCSS() {
+            const css = `
+                #contactsMap .balloon {
+                box-sizing: border-box;
+                padding-bottom: 8px;    
+                }
+            `;
+            const s = document.createElement('style');
+            s.appendChild(document.createTextNode(css));
+            document.head.appendChild(s);
+            })();
+
+            function ensureBalloonFullyVisible() {
+            const mapEl = document.getElementById('contactsMap');
+            if (!mapEl) return;
+            const balloonContent = mapEl.querySelector('.balloon'); 
+            if (!balloonContent) return;
+
+            const mapRect = mapEl.getBoundingClientRect();
+            const balRect = balloonContent.getBoundingClientRect();
+
+            const GAP = 12;
+
+            if (balRect.bottom > mapRect.bottom - GAP) {
+                const overflowPx = balRect.bottom - mapRect.bottom + GAP;
+
+                try {
+                contactsMap.panBy([0, overflowPx + 20], { duration: 250 });
+                } catch (e) {
+                try {
+                    const center = contactsMap.getCenter();
+                    contactsMap.setCenter([center[0] + 0.001, center[1]], contactsMap.getZoom(), { duration: 200 }); 
+                } catch (err) {}
+                }
+            }
+
+            if (balRect.top < mapRect.top + GAP) {
+                const underflowPx = mapRect.top + GAP - balRect.top;
+                try {
+                contactsMap.panBy([0, -underflowPx - 20], { duration: 250 });
+                } catch (e) {}
+            }
+            }
+
+            contactsMap.events.add('balloonopen', () => {
+            setTimeout(() => {
+                setYmapsOverflowVisible();   
+                ensureBalloonFullyVisible();
+            }, 120);
+            });
 
         contactsMap.setBounds(contactsMap.geoObjects.getBounds(), {checkZoomRange: true, zoomMargin: 100}); 
     }

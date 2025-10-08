@@ -3675,10 +3675,19 @@ p {
   margin-bottom: 20px;
 }
 
-.balloon p {
+.balloon p,
+.balloon a {
   font-size: 18px;
   line-height: 1;
   color: #7B7B7B;
+}
+
+.balloon a {
+  transition: all 0.3s ease;
+}
+
+.balloon a:hover {
+  color: #202020;
 }
 
 .balloon__contacts p {
@@ -6188,7 +6197,8 @@ p {
     font-size: 20px;
   }
 
-  .balloon p {
+  .balloon p,
+  .balloon a {
     font-size: 14px;
   }
 
@@ -7310,6 +7320,8 @@ p {
 
 
 /* Доработка Карты */
+
+
 
 .map-container {
   display: grid;
